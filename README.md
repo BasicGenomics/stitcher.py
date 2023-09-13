@@ -1,5 +1,4 @@
 # stitcher.py
-[![DOI](https://zenodo.org/badge/258522635.svg)](https://zenodo.org/badge/latestdoi/258522635)
 
 _stitcher.py_ reconstructs molecules from BG data and outputs a .bam file which can be used for further analysis. 
 
