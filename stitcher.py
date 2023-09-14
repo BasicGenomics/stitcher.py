@@ -317,7 +317,7 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['IR'] = 'IR:i:{}'.format(stitched_m['IR'])
     sam_dict['TC'] = 'TC:i:{}'.format(stitched_m['TC'])
     sam_dict['IC'] = 'IC:i:{}'.format(stitched_m['IC'])
-    sam_dict['FC'] = 'IC:i:{}'.format(stitched_m['FC'])
+    sam_dict['FC'] = 'FC:i:{}'.format(stitched_m['FC'])
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
