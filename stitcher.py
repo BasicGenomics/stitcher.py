@@ -211,6 +211,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, q):
         if cell_set is not None:
             if cell not in cell_set:
                 continue
+        if not read.has_tag(UMI_tag):
+            continue
         umi = read.get_tag(UMI_tag)
         if umi == '':
             continue
