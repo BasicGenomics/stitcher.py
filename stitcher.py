@@ -323,15 +323,15 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
 
 
 def make_POS_and_CIGAR(stitched_m):
+
     CIGAR = ''
-    conflict = False
-    interval_list = []
     ref_and_skip_intersect = stitched_m['ref_intervals'] & stitched_m['skipped_intervals']
-    nreads_conflict = 0
+
     if not ref_and_skip_intersect.empty:
         conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
         skip_pos_counter = Counter()
         for skip_tuples in stitched_m['skipped_interval_list']:
+            print(skip_tuples)
             skip_interval = interval(skip_tuples)
             skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
         reference_positions = []
@@ -366,11 +366,11 @@ def make_POS_and_CIGAR(stitched_m):
             continue
         CIGAR += '{}{}'.format(n_bases,c[0])
         del tuple_dict[c[0]][0]
-    return POS, CIGAR, conflict, nreads_conflict, interval_list
+    return POS, CIGAR
 
 def convert_to_sam(stitched_m, UMI_tag):
     sam_dict = {}
-    POS, CIGAR, conflict, nreads_conflict, interval_list = make_POS_and_CIGAR(stitched_m)
+    POS, CIGAR = make_POS_and_CIGAR(stitched_m)
     sam_dict['QNAME'] = '{}:{}:{}'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi'])
     sam_dict['FLAG'] = str(16*stitched_m['is_reverse'])
     sam_dict['RNAME'] = stitched_m['SN']
