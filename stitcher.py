@@ -164,7 +164,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             fiveprime_start.update({read.reference_end: 1})
 
         if len(master_read) == 0:
-            master_read['skipped_interval_list'] = skipped_intervals
+            master_read['skipped_interval_list'] = [skipped_intervals]
         else:
             master_read['skipped_interval_list'].append(skipped_intervals)
 
