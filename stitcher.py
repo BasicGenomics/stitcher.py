@@ -218,8 +218,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
         skip_pos_counter = Counter()
         for skip_tuples in master_read['skipped_interval_list']:
-            skip_interval = interval(skip_tuples)
-            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
+            skip_interval = interval(skip_tuples) 
+            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval and (molecule_start not in skip_interval and molecule_end not in skip_interval)])
         for pos in conflict_pos_list:
             if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
                 reference_positions.extend(pos)
