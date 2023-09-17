@@ -201,6 +201,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             l = sorted(l)
             molecule_start = l[0]
 
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
+
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
     master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
@@ -222,7 +224,11 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
                 skipped_positions.extend(pos)
         reference_keep_intervals = interval(intervals_extract(reference_positions))
         skip_keep_intervals = interval(intervals_extract(skipped_positions))
+        ### No refskip where there is reference sequence
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
+        ### Only keep refskip within defined molecule boundaries.
+        master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(molecule_start, molecule_end)
+        ### No ref coverage where there is refskip
         master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
 
     ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end and (p not in skipped_positions)}))
