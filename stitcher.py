@@ -208,6 +208,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
+    reference_positions = []
+    skipped_positions = []
 
     if not ref_and_skip_intersect.empty:
         conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
@@ -215,8 +217,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         for skip_tuples in master_read['skipped_interval_list']:
             skip_interval = interval(skip_tuples)
             skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
-        reference_positions = []
-        skipped_positions = []
         for pos in conflict_pos_list:
             if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
                 reference_positions.extend(pos)
