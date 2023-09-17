@@ -207,6 +207,9 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['ref_pos_counter'] = reference_pos_counter
     master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
 
+    ### Only keep refskip within defined molecule boundaries.
+    master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(molecule_start, molecule_end)
+
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
     reference_positions = []
     skipped_positions = []
@@ -226,18 +229,19 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         skip_keep_intervals = interval(intervals_extract(skipped_positions))
         ### No refskip where there is reference sequence
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
-        ### Only keep refskip within defined molecule boundaries.
-        master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(molecule_start, molecule_end)
         ### No ref coverage where there is refskip
         master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
 
-    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end and (p not in skipped_positions)}))
+    ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
+
+    if len(ref_pos_set_array) == 0:
+        return (False, ':'.join([gene,cell,umi]))
 
     ref_to_pos_dict = {p:o for p,o in zip(ref_pos_set_array, using_indexed_assignment(ref_pos_set_array))}
 
     for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
         for b1, Q, pos in zip(seq,Q_list, ref_positions):
-            if pos < molecule_start or pos > molecule_end:
+            if pos not in master_read['ref_intervals']:
                 continue
             for b2 in nucleotides:
                 sparse_row_dict[b2].append(i)
@@ -350,10 +354,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
 
 
 def make_POS_and_CIGAR(stitched_m):
-
     CIGAR = ''
-    
-    
+
     ref_tuples = [(i[1] if i[0] else i[1]+1, i[2] if i[3] else i[2]-1) for i in P.to_data(stitched_m['ref_intervals'])]
     if stitched_m['skipped_intervals'].empty:
         skipped_tuples = []
