@@ -15,6 +15,7 @@ import json
 from scipy.special import logsumexp
 from joblib import delayed,Parallel
 from multiprocessing import Process, Manager
+from collections import Counter
 
 __version__ = '3.0'
 nucleotides = ['A', 'T', 'C', 'G']
@@ -93,6 +94,8 @@ def using_indexed_assignment(x):
     result[temp] = np.arange(len(x))
     return result
 
+
+
 def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read = {}
     nreads = len(read_d)
@@ -104,6 +107,9 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     qual_list = []
     ref_pos_set = set()
     ref_pos_list = []
+    threeprime_start = Counter()
+    fiveprime_start = Counter()
+    reference_pos_counter = Counter()
     for i,read in enumerate(read_d):
         if read.has_tag('GE'):
             exonic = True
@@ -137,28 +143,72 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         qual_list.append(Q_list)
 
         ref_pos_list.append(ref_positions)
+        reference_pos_counter.update(ref_positions)
 
         ref_pos_set = ref_pos_set | set(ref_positions)
 
-        orientation_counts[read.get_tag('YZ')] += 1
+        orientation = read.get_tag('YZ')
+        orientation_counts[orientation] += 1
+        
+        read_type = read.get_tag('XX')
+        read_type_counts[read_type] += 1
 
-        read_type_counts[read.get_tag('XX')] += 1
+        if orientation == '+' and read_type == 'threep_BCUMI_read' and read.is_read1 and read.is_reverse:
+            threeprime_start.update({read.reference_end: 1})
+        if orientation == '-' and read_type == 'threep_BCUMI_read' and read.is_read1 and not read.is_reverse:
+            threeprime_start.update({read.reference_start: 1})
+        
+        if orientation == '+' and read_type == 'fivep_T_read' and read.is_read1 and not read.is_reverse:
+            fiveprime_start.update({read.reference_start: 1})
+        if orientation == '-' and read_type == 'fivep_T_read' and read.is_read1 and read.is_reverse:
+            fiveprime_start.update({read.reference_end: 1})
 
         if len(master_read) == 0:
-            master_read['skipped_intervals'] = skipped_intervals
+            master_read['skipped_interval_list'] = skipped_intervals
         else:
-            master_read['skipped_intervals'].extend(skipped_intervals)
+            master_read['skipped_interval_list'].extend(skipped_intervals)
 
     sparse_row_dict = {b:[] for b in nucleotides}
     sparse_col_dict = {b:[] for b in nucleotides}
     sparse_ll_dict = {b:[] for b in nucleotides}
+    
+    molecule_start = -1
+    molecule_end = 4294967200
+    if orientation_counts['-'] >= orientation_counts['+']:
+        if len(threeprime_start) > 0:
+            l = threeprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l)
+            molecule_start = l[0]
+        if len(fiveprime_start) > 0:
+            l = fiveprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l, reverse=True)
+            molecule_end = l[0]
+    else:
+        if len(threeprime_start) > 0:
+            l = threeprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l, reverse=True)
+            molecule_end = l[0]
+        if len(fiveprime_start) > 0:
+            l = fiveprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l)
+            molecule_start = l[0]
 
-    ref_pos_set_array = np.array(list(ref_pos_set))
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
 
     ref_to_pos_dict = {p:o for p,o in zip(ref_pos_set_array, using_indexed_assignment(ref_pos_set_array))}
 
     for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
         for b1, Q, pos in zip(seq,Q_list, ref_positions):
+            if pos < molecule_start or pos > molecule_end:
+                continue
             for b2 in nucleotides:
                 sparse_row_dict[b2].append(i)
                 sparse_col_dict[b2].append(ref_to_pos_dict[pos])
@@ -186,7 +236,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['SN'] = read.reference_name
     master_read['is_reverse'] = 1 if orientation_counts['-'] >= orientation_counts['+'] else 0
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
-    master_read['skipped_intervals'] = interval(list(set(master_read['skipped_intervals'])))
+    master_read['ref_pos_counter'] = reference_pos_counter
+    master_read['skipped_intervals'] = interval(list(set(master_read['skipped_interval_list'])))
     master_read['del_intervals'] =  ~(master_read['ref_intervals'] | master_read['skipped_intervals'])
     master_read['NR'] = nreads
     master_read['IR'] = np.sum(intronic_list)
@@ -199,7 +250,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['umi'] = umi
     return (True, convert_to_sam(master_read, UMI_tag))
 
-def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, q):
+def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_molecules, q):
     readtrie = pygtrie.StringTrie()
     bam = pysam.AlignmentFile(bamfile, 'rb')
     gene_of_interest = gene_to_stitch['gene_id']
@@ -217,6 +268,12 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, q):
         if umi == '':
             continue
         else:
+            if only_molecules:
+                if umi[0] == '_':
+                    continue
+                if len(umi) >= 5:
+                    if umi[:5] == 'Unass':
+                        continue
             if read.has_tag('GE'):
                 gene_exon = read.get_tag('GE')
             else:
@@ -272,10 +329,23 @@ def make_POS_and_CIGAR(stitched_m):
     ref_and_skip_intersect = stitched_m['ref_intervals'] & stitched_m['skipped_intervals']
     nreads_conflict = 0
     if not ref_and_skip_intersect.empty:
-        conflict = True
-        nreads_conflict = len(list(P.iterate(ref_and_skip_intersect, step=1))) 
-        stitched_m['skipped_intervals'] = stitched_m['skipped_intervals'] - ref_and_skip_intersect
-        interval_list = [i for t in P.to_data(ref_and_skip_intersect) for i in t[1:-1]]
+        conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
+        skip_pos_counter = Counter()
+        for skip_tuples in stitched_m['skipped_interval_list']:
+            skip_interval = interval(skip_tuples)
+            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
+        reference_positions = []
+        skipped_positions = []
+        for pos in conflict_pos_list:
+            if stitched_m['ref_pos_counter'][pos] > skip_pos_counter[pos]:
+                reference_positions.extend(pos)
+            else:
+                skipped_positions.extend(pos)
+        reference_keep_intervals = interval(intervals_extract(reference_positions))
+        skip_keep_intervals = interval(intervals_extract(skipped_positions))
+        stitched_m['skipped_intervals'] = stitched_m['skipped_intervals'] - reference_keep_intervals
+        stitched_m['ref_intervals'] = stitched_m['ref_intervals'] - skip_keep_intervals
+    
     ref_tuples = [(i[1] if i[0] else i[1]+1, i[2] if i[3] else i[2]-1) for i in P.to_data(stitched_m['ref_intervals'])]
     if stitched_m['skipped_intervals'].empty:
         skipped_tuples = []
@@ -367,7 +437,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
     
-def construct_stitched_molecules(infile, gtffile, cells, gene_file, contig, threads, cell_tag, UMI_tag, gene_identifier, q, version):
+def construct_stitched_molecules(infile, gtffile, cells, gene_file, contig, threads, cell_tag, UMI_tag, gene_identifier,only_molecules, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
@@ -416,7 +486,7 @@ def construct_stitched_molecules(infile, gtffile, cells, gene_file, contig, thre
     bam.close()
     
     
-    res = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set, cell_tag, UMI_tag, q) for g,gene in gene_dict.items())
+    res = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set, cell_tag, UMI_tag, only_molecules, q) for g,gene in gene_dict.items())
 
 
     return None
@@ -433,6 +503,7 @@ if __name__ == '__main__':
     parser.add_argument('--genes', default=None, metavar='genes', type=str, help='List of gene,  one per line.')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
     parser.add_argument('--gene-identifier', default='gene_id', metavar='gene_identifier', type=str, help='Gene identifier (gene_id or gene_name)')
+    parser.add_argument('--only-molecules', action='store_true', help='Only reconstruct molecues')
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
     args = parser.parse_args()
     infile = args.input
@@ -451,6 +522,7 @@ if __name__ == '__main__':
     UMI_tag = args.UMI_tag
     cell_tag = args.cell_tag
     gene_identifier = args.gene_identifier
+    only_molecules = args.only_molecules
     m = Manager()
     q = m.JoinableQueue()
     p = Process(target=create_write_function(filename=outfile, bamfile=infile, version=__version__), args=(q,))
@@ -459,7 +531,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, gtffile, cells, gene_file, contig, threads,cell_tag, UMI_tag,gene_identifier, q, __version__ )
+    construct_stitched_molecules(infile, gtffile, cells, gene_file, contig, threads,cell_tag, UMI_tag,gene_identifier, only_molecules, q, __version__ )
     q.put((None,None))
     p.join()
     end = time.time()
