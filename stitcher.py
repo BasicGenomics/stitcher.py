@@ -391,9 +391,6 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
-    if conflict:
-        sam_dict['NC'] = 'NC:i:{}'.format(nreads_conflict)
-        sam_dict['IL'] = 'IL:B:I,{}'.format(','.join([str(e) for e in interval_list]))
     return '\t'.join(list(sam_dict.values()))
 
 def yield_reads(read_dict):
