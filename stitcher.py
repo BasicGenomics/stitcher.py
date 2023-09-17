@@ -201,7 +201,31 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             l = sorted(l)
             molecule_start = l[0]
 
-    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
+    master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
+    master_read['ref_pos_counter'] = reference_pos_counter
+    master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
+
+    ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
+
+    if not ref_and_skip_intersect.empty:
+        conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
+        skip_pos_counter = Counter()
+        for skip_tuples in master_read['skipped_interval_list']:
+            skip_interval = interval(skip_tuples)
+            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
+        reference_positions = []
+        skipped_positions = []
+        for pos in conflict_pos_list:
+            if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
+                reference_positions.extend(pos)
+            else:
+                skipped_positions.extend(pos)
+        reference_keep_intervals = interval(intervals_extract(reference_positions))
+        skip_keep_intervals = interval(intervals_extract(skipped_positions))
+        master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
+        master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
+
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end and (p not in skipped_positions)}))
 
     ref_to_pos_dict = {p:o for p,o in zip(ref_pos_set_array, using_indexed_assignment(ref_pos_set_array))}
 
@@ -235,9 +259,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['phred'] = np.nan_to_num(np.rint(-10*np.log10(1-prob_max+1e-13)))
     master_read['SN'] = read.reference_name
     master_read['is_reverse'] = 1 if orientation_counts['-'] >= orientation_counts['+'] else 0
-    master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
-    master_read['ref_pos_counter'] = reference_pos_counter
-    master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
     master_read['del_intervals'] =  ~(master_read['ref_intervals'] | master_read['skipped_intervals'])
     master_read['NR'] = nreads
     master_read['IR'] = np.sum(intronic_list)
@@ -325,25 +346,7 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
 def make_POS_and_CIGAR(stitched_m):
 
     CIGAR = ''
-    ref_and_skip_intersect = stitched_m['ref_intervals'] & stitched_m['skipped_intervals']
-
-    if not ref_and_skip_intersect.empty:
-        conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
-        skip_pos_counter = Counter()
-        for skip_tuples in stitched_m['skipped_interval_list']:
-            skip_interval = interval(skip_tuples)
-            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
-        reference_positions = []
-        skipped_positions = []
-        for pos in conflict_pos_list:
-            if stitched_m['ref_pos_counter'][pos] > skip_pos_counter[pos]:
-                reference_positions.extend(pos)
-            else:
-                skipped_positions.extend(pos)
-        reference_keep_intervals = interval(intervals_extract(reference_positions))
-        skip_keep_intervals = interval(intervals_extract(skipped_positions))
-        stitched_m['skipped_intervals'] = stitched_m['skipped_intervals'] - reference_keep_intervals
-        stitched_m['ref_intervals'] = stitched_m['ref_intervals'] - skip_keep_intervals
+    
     
     ref_tuples = [(i[1] if i[0] else i[1]+1, i[2] if i[3] else i[2]-1) for i in P.to_data(stitched_m['ref_intervals'])]
     if stitched_m['skipped_intervals'].empty:
