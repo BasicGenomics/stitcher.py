@@ -237,6 +237,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['is_reverse'] = 1 if orientation_counts['-'] >= orientation_counts['+'] else 0
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
+    print([item for sublist in master_read['skipped_interval_list'] for item in sublist])
     master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
     master_read['del_intervals'] =  ~(master_read['ref_intervals'] | master_read['skipped_intervals'])
     master_read['NR'] = nreads
