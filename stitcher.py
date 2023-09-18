@@ -231,6 +231,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
         ### No ref coverage where there is refskip
         master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
+        
+    master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
 
     ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
 
