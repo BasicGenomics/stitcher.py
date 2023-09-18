@@ -281,7 +281,11 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
-    return (True, convert_to_sam(master_read, UMI_tag))
+    sam = convert_to_sam(master_read, UMI_tag)
+    if sam is None:
+        return (False, ':'.join([gene,cell,umi]))
+    else:
+        return (True, sam)
 
 def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_molecules, q):
     readtrie = pygtrie.StringTrie()
@@ -343,9 +347,7 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
     mol_append = mol_list.append
     for node, mol in readtrie.iteritems():
         info = node.split('/')
-        res = stitch_reads(mol, info[0], info[1], info[2], UMI_tag)
-        if res is not None:
-            mol_append(res)
+        mol_append(stitch_reads(mol, info[0], info[1], info[2], UMI_tag))
     del readtrie
     if len(mol_list) == 0:
         return gene_of_interest
@@ -399,7 +401,6 @@ def convert_to_sam(stitched_m, UMI_tag):
     POS, CIGAR = make_POS_and_CIGAR(stitched_m)
     len_from_cigar = get_len_from_cigar(CIGAR)
     if len_from_cigar != len(stitched_m['seq']):
-        print('{}:{}:{} not successful'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi']))
         return None
     sam_dict['QNAME'] = '{}:{}:{}'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi'])
     sam_dict['FLAG'] = str(16*stitched_m['is_reverse'])
@@ -452,9 +453,6 @@ def create_write_function(filename, bamfile, version):
                 for success, mol in mol_list:
                     if success:
                         read = pysam.AlignedRead.fromstring(mol,header)
-                        if get_length_from_cigar(read) != len(read.query_sequence):
-                            print(read)
-                            continue
                         if g == '':
                             g = read.get_tag('XT')
                         stitcher_bam.write(read)
