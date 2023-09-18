@@ -411,7 +411,12 @@ def yield_reads(read_dict):
                 #print('\t\t', umi)
                 yield read_dict[cell][gene][umi], None, cell, gene, umi
 
-
+def get_length_from_cigar(read):
+    total_len = 0
+    for (op, len) in read.cigartuples:
+        if op == 0:
+            total_len += len
+    return total_len
 def create_write_function(filename, bamfile, version):
     bam = pysam.AlignmentFile(bamfile, 'rb')
     header = bam.header
@@ -427,6 +432,9 @@ def create_write_function(filename, bamfile, version):
                 for success, mol in mol_list:
                     if success:
                         read = pysam.AlignedRead.fromstring(mol,header)
+                        if get_length_from_cigar(read) != len(read.query_sequence):
+                            print(read)
+                            continue
                         if g == '':
                             g = read.get_tag('XT')
                         stitcher_bam.write(read)
