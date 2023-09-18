@@ -231,7 +231,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
         ### No ref coverage where there is refskip
         master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
-        
+
     master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
 
     ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
@@ -343,7 +343,9 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
     mol_append = mol_list.append
     for node, mol in readtrie.iteritems():
         info = node.split('/')
-        mol_append(stitch_reads(mol, info[0], info[1], info[2], UMI_tag))
+        res = stitch_reads(mol, info[0], info[1], info[2], UMI_tag)
+        if res is not None:
+            mol_append(res)
     del readtrie
     if len(mol_list) == 0:
         return gene_of_interest
@@ -357,7 +359,6 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
 
 def make_POS_and_CIGAR(stitched_m):
     CIGAR = ''
-
     ref_tuples = [(i[1] if i[0] else i[1]+1, i[2] if i[3] else i[2]-1) for i in P.to_data(stitched_m['ref_intervals'])]
     if stitched_m['skipped_intervals'].empty:
         skipped_tuples = []
@@ -380,9 +381,26 @@ def make_POS_and_CIGAR(stitched_m):
         del tuple_dict[c[0]][0]
     return POS, CIGAR
 
+def get_len_from_cigar(cigarstring):
+    total_len = 0
+    len_string = ''
+    for s in cigarstring:
+        if s not in ['M', 'N', 'D']:
+            len_string += s
+        elif s == 'M':
+            total_len += int(len_string)
+            len_string = ''
+        else:
+            len_string = ''
+    return total_len
+
 def convert_to_sam(stitched_m, UMI_tag):
     sam_dict = {}
     POS, CIGAR = make_POS_and_CIGAR(stitched_m)
+    len_from_cigar = get_len_from_cigar(CIGAR)
+    if len_from_cigar != len(stitched_m['seq']):
+        print('{}:{}:{} not successful'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi']))
+        return None
     sam_dict['QNAME'] = '{}:{}:{}'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi'])
     sam_dict['FLAG'] = str(16*stitched_m['is_reverse'])
     sam_dict['RNAME'] = stitched_m['SN']
