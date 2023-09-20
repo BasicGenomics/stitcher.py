@@ -16,7 +16,7 @@ from scipy.special import logsumexp
 from joblib import delayed,Parallel
 from multiprocessing import Process, Manager
 from collections import Counter
-
+import faulthandler
 __version__ = '3.0'
 nucleotides = ['A', 'T', 'C', 'G']
 nuc_dict = {'A':0, 'T':1, 'C':2, 'G':3, 'N': 4}
@@ -97,6 +97,7 @@ def using_indexed_assignment(x):
 
 
 def stitch_reads(read_d, cell, gene, umi, UMI_tag):
+    faulthandler.enable()
     master_read = {}
     nreads = len(read_d)
     exonic_list = [0]*nreads
@@ -120,6 +121,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         else:
             intronic = False
         try:
+            #with open('debug_output.txt', 'w') as f:
+                #f.write(read+'\n')
             Q_list = list(read.query_alignment_qualities)
         except TypeError:
             Q_list = [read.query_alignment_qualities]
@@ -171,44 +174,13 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     sparse_row_dict = {b:[] for b in nucleotides}
     sparse_col_dict = {b:[] for b in nucleotides}
     sparse_ll_dict = {b:[] for b in nucleotides}
-    
-    molecule_start = -1
-    molecule_end = 4294967200
-    if orientation_counts['-'] >= orientation_counts['+']:
-        if len(threeprime_start) > 0:
-            l = threeprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l)
-            molecule_start = l[0]
-        if len(fiveprime_start) > 0:
-            l = fiveprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l, reverse=True)
-            molecule_end = l[0]
-    else:
-        if len(threeprime_start) > 0:
-            l = threeprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l, reverse=True)
-            molecule_end = l[0]
-        if len(fiveprime_start) > 0:
-            l = fiveprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l)
-            molecule_start = l[0]
 
-    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set}))
 
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
     master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
 
-    ### Only keep refskip within defined molecule boundaries.
-    master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(molecule_start, molecule_end)
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
     reference_positions = []
@@ -219,12 +191,13 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         skip_pos_counter = Counter()
         for skip_tuples in master_read['skipped_interval_list']:
             skip_interval = interval(skip_tuples) 
-            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval and (molecule_start not in skip_interval and molecule_end not in skip_interval)])
+            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
         for pos in conflict_pos_list:
             if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
                 reference_positions.extend(pos)
             else:
                 skipped_positions.extend(pos)
+
         reference_keep_intervals = interval(intervals_extract(reference_positions))
         skip_keep_intervals = interval(intervals_extract(skipped_positions))
         ### No refskip where there is reference sequence
@@ -261,7 +234,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         ll_sums = np.stack(ll_list)
     except ValueError:
         return (False, ':'.join([gene,cell,umi]))
-
     full_ll = logsumexp(ll_sums, axis=0)
 
     prob_max = np.asarray(np.exp(np.amax(ll_sums, axis=0) - full_ll)).ravel()
