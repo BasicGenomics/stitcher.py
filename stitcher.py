@@ -198,8 +198,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             else:
                 skipped_positions.extend(pos)
 
-        reference_keep_intervals = interval(intervals_extract(reference_positions))
-        skip_keep_intervals = interval(intervals_extract(skipped_positions))
+        reference_keep_intervals = interval(intervals_extract(conflict_pos_list))
+        skip_keep_intervals = interval(intervals_extract([]))
         ### No refskip where there is reference sequence
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
         ### No ref coverage where there is refskip
