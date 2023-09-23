@@ -183,31 +183,13 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
-    reference_positions = []
-    skipped_positions = []
 
     if not ref_and_skip_intersect.empty:
-        conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
-        skip_pos_counter = Counter()
-        for skip_tuples in master_read['skipped_interval_list']:
-            skip_interval = interval(skip_tuples) 
-            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
-        for pos in conflict_pos_list:
-            if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
-                reference_positions.extend(pos)
-            else:
-                skipped_positions.extend(pos)
+        conflict_pos_list = list(P.iterate(ref_and_skip_intersect, step=1))
 
         reference_keep_intervals = interval(intervals_extract(conflict_pos_list))
-        skip_keep_intervals = interval(intervals_extract([]))
-        ### No refskip where there is reference sequence
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
-        ### No ref coverage where there is refskip
-        master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
 
-    master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
-
-    ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
 
     if len(ref_pos_set_array) == 0:
         return (False, ':'.join([gene,cell,umi]))
@@ -216,8 +198,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
         for b1, Q, pos in zip(seq,Q_list, ref_positions):
-            if pos not in master_read['ref_intervals']:
-                continue
             for b2 in nucleotides:
                 sparse_row_dict[b2].append(i)
                 sparse_col_dict[b2].append(ref_to_pos_dict[pos])
