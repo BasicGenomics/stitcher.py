@@ -108,8 +108,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     qual_list = []
     ref_pos_set = set()
     ref_pos_list = []
-    threeprime_start = Counter()
-    fiveprime_start = Counter()
     reference_pos_counter = Counter()
     for i,read in enumerate(read_d):
         if read.has_tag('GE'):
@@ -156,15 +154,6 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         read_type = read.get_tag('XX')
         read_type_counts[read_type] += 1
 
-        if orientation == '+' and read_type == 'threep_BCUMI_read' and read.is_read1 and read.is_reverse:
-            threeprime_start.update({read.reference_end: 1})
-        if orientation == '-' and read_type == 'threep_BCUMI_read' and read.is_read1 and not read.is_reverse:
-            threeprime_start.update({read.reference_start: 1})
-        
-        if orientation == '+' and read_type == 'fivep_T_read' and read.is_read1 and not read.is_reverse:
-            fiveprime_start.update({read.reference_start: 1})
-        if orientation == '-' and read_type == 'fivep_T_read' and read.is_read1 and read.is_reverse:
-            fiveprime_start.update({read.reference_end: 1})
 
         if len(master_read) == 0:
             master_read['skipped_interval_list'] = [skipped_intervals]
