@@ -172,6 +172,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
 
     if not ref_and_skip_intersect.empty:
+        reference_positions = []
+        skipped_positions = []
         conflict_pos_list = list(P.iterate(ref_and_skip_intersect, step=1))
         skip_pos_counter = Counter()
         for skip_tuples in master_read['skipped_interval_list']:
@@ -183,7 +185,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             else:
                 skipped_positions.append(pos)
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - interval(intervals_extract(reference_positions))
-        master_read['skipped_intervals'] = master_read['ref_intervals'] - interval(intervals_extract(skipped_positions))
+        master_read['ref_intervals'] = master_read['ref_intervals'] - interval(intervals_extract(skipped_positions))
 
     master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
     ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
@@ -195,6 +197,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
         for b1, Q, pos in zip(seq,Q_list, ref_positions):
+            if pos not in ref_to_pos_dict:
+                continue
             for b2 in nucleotides:
                 sparse_row_dict[b2].append(i)
                 sparse_col_dict[b2].append(ref_to_pos_dict[pos])
