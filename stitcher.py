@@ -16,7 +16,6 @@ from scipy.special import logsumexp
 from joblib import delayed,Parallel
 from multiprocessing import Process, Manager
 from collections import Counter
-import faulthandler
 __version__ = '3.0'
 nucleotides = ['A', 'T', 'C', 'G']
 nuc_dict = {'A':0, 'T':1, 'C':2, 'G':3, 'N': 4}
@@ -97,7 +96,6 @@ def using_indexed_assignment(x):
 
 
 def stitch_reads(read_d, cell, gene, umi, UMI_tag):
-    faulthandler.enable()
     master_read = {}
     nreads = len(read_d)
     exonic_list = [0]*nreads
@@ -175,10 +173,20 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     if not ref_and_skip_intersect.empty:
         conflict_pos_list = list(P.iterate(ref_and_skip_intersect, step=1))
+        skip_pos_counter = Counter()
+        for skip_tuples in master_read['skipped_interval_list']:
+            skip_interval = interval(skip_tuples)
+            skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
+        for pos in conflict_pos_list:
+            if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
+                reference_positions.append(pos)
+            else:
+                skipped_positions.append(pos)
+        master_read['skipped_intervals'] = master_read['skipped_intervals'] - interval(intervals_extract(reference_positions))
+        master_read['skipped_intervals'] = master_read['ref_intervals'] - interval(intervals_extract(skipped_positions))
 
-        reference_keep_intervals = interval(intervals_extract(conflict_pos_list))
-        master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
-
+    master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
+    ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
 
     if len(ref_pos_set_array) == 0:
         return (False, ':'.join([gene,cell,umi]))
