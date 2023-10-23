@@ -107,6 +107,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     ref_pos_set = set()
     ref_pos_list = []
     reference_pos_counter = Counter()
+    threeprime_start = Counter()
+    fiveprime_start = Counter()
     for i,read in enumerate(read_d):
         if read.has_tag('GE'):
             exonic = True
@@ -152,6 +154,15 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         read_type = read.get_tag('XX')
         read_type_counts[read_type] += 1
 
+        if orientation == '+' and read_type == 'threep_BCUMI_read' and read.is_read1 and read.is_reverse:
+            threeprime_start.update({read.reference_end: 1})
+        if orientation == '-' and read_type == 'threep_BCUMI_read' and read.is_read1 and not read.is_reverse:
+            threeprime_start.update({read.reference_start: 1})
+        if orientation == '+' and read_type == 'fivep_T_read' and read.is_read1 and not read.is_reverse:
+            fiveprime_start.update({read.reference_start: 1})
+        if orientation == '-' and read_type == 'fivep_T_read' and read.is_read1 and read.is_reverse:
+            fiveprime_start.update({read.reference_end: 1})
+
 
         if len(master_read) == 0:
             master_read['skipped_interval_list'] = [skipped_intervals]
@@ -162,7 +173,41 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     sparse_col_dict = {b:[] for b in nucleotides}
     sparse_ll_dict = {b:[] for b in nucleotides}
 
-    ref_pos_set_array = np.array(list({p for p in ref_pos_set}))
+    molecule_start = -1
+    molecule_end = 4294967200
+    if orientation_counts['-'] >= orientation_counts['+']:
+        if len(threeprime_start) > 0:
+            l = threeprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l)
+            molecule_start = l[0]
+        if len(fiveprime_start) > 0:
+            l = fiveprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l, reverse=True)
+            molecule_end = l[0]
+    else:
+        if len(threeprime_start) > 0:
+            l = threeprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l, reverse=True)
+            molecule_end = l[0]
+        if len(fiveprime_start) > 0:
+            l = fiveprime_start.most_common()
+            max_count = l[0][1]
+            l = [pos for (pos,count) in l if count == max_count]
+            l = sorted(l)
+            molecule_start = l[0]
+
+
+
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
+
+    if len(ref_pos_set_array) == 0:
+        return (False, ':'.join([gene,cell,umi]))
 
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
