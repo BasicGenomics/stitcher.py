@@ -99,7 +99,6 @@ def filter_splice_junctions(skipped_interval_list):
     interval_keys = list(interval_counter.keys())
     interval_values = list(interval_counter.values())
     while True:
-        print(interval_keys, interval_values)
         deleted_interval = False
         for i in range(len(interval_keys)-1):
             this_interval = interval_keys[i]
