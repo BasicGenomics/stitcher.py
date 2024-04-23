@@ -93,6 +93,37 @@ def using_indexed_assignment(x):
     result[temp] = np.arange(len(x))
     return result
 
+def filter_splice_junctions(skipped_interval_list):
+    l = [item for sublist in skipped_interval_list for item in sublist]
+    interval_counter = Counter(sorted(l, key = lambda x: (x[0], x[1])))
+    interval_keys = list(interval_counter.keys())
+    interval_values = list(interval_counter.values())
+    while True:
+        print(interval_keys, interval_values)
+        deleted_interval = False
+        for i in range(len(interval_keys)-1):
+            this_interval = interval_keys[i]
+            this_count = interval_values[i]
+            other_interval = interval_keys[i+1]
+            other_count = interval_values[i+1]
+            if is_overlapping(this_interval,other_interval):
+                deleted_interval = True
+                if this_count > other_count:
+                    del interval_keys[i+1]
+                    del interval_values[i+1]
+                else:
+                    del interval_keys[i]
+                    del interval_values[i]
+            if deleted_interval:
+                break
+        if deleted_interval:
+            continue
+        else:
+            break
+    return interval(list(interval_keys))
+
+def is_overlapping(this_interval, other_interval):
+    return this_interval[1] >= other_interval[0]
 
 
 def stitch_reads(read_d, cell, gene, umi, UMI_tag):
@@ -173,45 +204,14 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     sparse_col_dict = {b:[] for b in nucleotides}
     sparse_ll_dict = {b:[] for b in nucleotides}
 
-    molecule_start = -1
-    molecule_end = 4294967200
-    if orientation_counts['-'] >= orientation_counts['+']:
-        if len(threeprime_start) > 0:
-            l = threeprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l)
-            molecule_start = l[0]
-        if len(fiveprime_start) > 0:
-            l = fiveprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l, reverse=True)
-            molecule_end = l[0]
-    else:
-        if len(threeprime_start) > 0:
-            l = threeprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l, reverse=True)
-            molecule_end = l[0]
-        if len(fiveprime_start) > 0:
-            l = fiveprime_start.most_common()
-            max_count = l[0][1]
-            l = [pos for (pos,count) in l if count == max_count]
-            l = sorted(l)
-            molecule_start = l[0]
-
-
-
-    ref_pos_set_array = np.array(list({p for p in ref_pos_set if p >= molecule_start and p <= molecule_end}))
+    ref_pos_set_array = np.array(list({p for p in ref_pos_set}))
 
     if len(ref_pos_set_array) == 0:
         return (False, ':'.join([gene,cell,umi]))
 
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
-    master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
+    master_read['skipped_intervals'] = filter_splice_junctions(master_read['skipped_interval_list'])
 
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
