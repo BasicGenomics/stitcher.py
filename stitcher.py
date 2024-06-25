@@ -211,7 +211,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
     interval_keys, master_read['skipped_intervals'] = filter_splice_junctions(master_read['skipped_interval_list'])
-    junction_set = set(interval_keys)
+    junction_set = set([item for sublist in interval_keys for item in sublist])
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
 
