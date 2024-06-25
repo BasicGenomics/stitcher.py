@@ -119,7 +119,7 @@ def filter_splice_junctions(skipped_interval_list):
             continue
         else:
             break
-    return interval(list(interval_keys))
+    return interval_keys, interval(list(interval_keys))
 
 def is_overlapping(this_interval, other_interval):
     return this_interval[1] >= other_interval[0]
@@ -210,8 +210,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
-    master_read['skipped_intervals'] = filter_splice_junctions(master_read['skipped_interval_list'])
-
+    interval_keys, master_read['skipped_intervals'] = filter_splice_junctions(master_read['skipped_interval_list'])
+    junction_set = set(interval_keys)
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
 
@@ -229,8 +229,9 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             else:
                 skipped_positions.append(pos)
         master_read['skipped_intervals'] = master_read['skipped_intervals'] - interval(intervals_extract(reference_positions))
+        master_read['skipped_intervals'] = P.from_data([(True, i[1], i[2], True) for i in P.to_data(master_read['skipped_intervals']) if i[1] in junction_set and i[2] in junction_set])
         master_read['ref_intervals'] = master_read['ref_intervals'] - interval(intervals_extract(skipped_positions))
-
+    
     master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
     ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
 
