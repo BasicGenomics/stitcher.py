@@ -140,6 +140,13 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     threeprime_start = Counter()
     fiveprime_start = Counter()
     for i,read in enumerate(read_d):
+        if i == 0:
+            if read.has_tag('SC'):
+                master_read['SC'] = read.get_tag('SC')
+                master_read['CC'] = read.get_tag('CC')
+            else:
+                master_read['SC'] = 0
+                master_read['CC'] = 0
         if read.has_tag('GE'):
             exonic = True
         else:
@@ -417,6 +424,8 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['TC'] = 'TC:i:{}'.format(stitched_m['TC'])
     sam_dict['IC'] = 'IC:i:{}'.format(stitched_m['IC'])
     sam_dict['FC'] = 'FC:i:{}'.format(stitched_m['FC'])
+    sam_dict['SC'] = 'SC:i:{}'.format(stitched_m['SC'])
+    sam_dict['CC'] = 'CC:i:{}'.format(stitched_m['CC'])
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
