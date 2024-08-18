@@ -139,6 +139,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     reference_pos_counter = Counter()
     threeprime_start = Counter()
     fiveprime_start = Counter()
+    master_read['skipped_interval_list'] = []
     for i,read in enumerate(read_d):
         if i == 0:
             if read.has_tag('SC'):
