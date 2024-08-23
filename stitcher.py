@@ -314,6 +314,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
             if only_molecules:
                 if umi[0] == '_':
                     continue
+                if cell[-1] == '_':
+                    continue
                 if len(umi) >= 5:
                     if umi[:5] == 'Unass':
                         continue
