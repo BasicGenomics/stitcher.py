@@ -140,6 +140,8 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     threeprime_start = Counter()
     fiveprime_start = Counter()
     master_read['skipped_interval_list'] = []
+    T1 = False
+    F1 = False
     for i,read in enumerate(read_d):
         if i == 0:
             if read.has_tag('SC'):
@@ -193,12 +195,16 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         read_type_counts[read_type] += 1
 
         if orientation == '+' and read_type == 'threep_BCUMI_read' and read.is_read1 and read.is_reverse:
+            T1 = True
             threeprime_start.update({read.reference_end: 1})
         if orientation == '-' and read_type == 'threep_BCUMI_read' and read.is_read1 and not read.is_reverse:
+            T1 = True
             threeprime_start.update({read.reference_start: 1})
         if orientation == '+' and read_type == 'fivep_T_read' and read.is_read1 and not read.is_reverse:
+            F1 = True
             fiveprime_start.update({read.reference_start: 1})
         if orientation == '-' and read_type == 'fivep_T_read' and read.is_read1 and read.is_reverse:
+            F1 = True
             fiveprime_start.update({read.reference_end: 1})
 
 
@@ -287,6 +293,14 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
+    if T1:
+        master_read['T1'] = 'Y'
+    else:
+        master_read['T1'] = 'N'
+    if F1:
+        master_read['F1'] = 'Y'
+    else:
+        master_read['F1'] = 'N'
     sam = convert_to_sam(master_read, UMI_tag)
     if sam is None:
         return (False, ':'.join([gene,cell,umi]))
@@ -431,6 +445,8 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['CC'] = 'CC:i:{}'.format(stitched_m['CC'])
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
+    sam_dict['T1'] = 'XT:Z:{}'.format(stitched_m['T1'])
+    sam_dict['F1'] = 'XT:Z:{}'.format(stitched_m['F1'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
     return '\t'.join(list(sam_dict.values()))
 
