@@ -452,6 +452,7 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
     sam_dict['T1'] = 'T1:Z:{}'.format(stitched_m['T1'])
     sam_dict['F1'] = 'F1:Z:{}'.format(stitched_m['F1'])
+    sam_dict['SM'] = 'SM:Z:{}'.format(stitched_m['SM'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
     return '\t'.join(list(sam_dict.values()))
 
