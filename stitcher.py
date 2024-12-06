@@ -143,6 +143,10 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     T1 = False
     F1 = False
     for i,read in enumerate(read_d):
+        if read.has_tag('SM'):
+            sample_tag = read.get_tag('SM')
+        else:
+            sample_tag = 'NA'
         if i == 0:
             if read.has_tag('SC'):
                 master_read['SC'] = read.get_tag('SC')
@@ -293,6 +297,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
+    master_read['SM'] = sample_tag
     if T1:
         master_read['T1'] = 'Y'
     else:
