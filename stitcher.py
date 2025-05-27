@@ -103,7 +103,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     exonic_list = [0]*nreads
     intronic_list = [0]*nreads
     orientation_counts = {'+': 0, '-': 0, 'NA': 0, 'no': 0}
-    read_type_counts = {'threep_BCUMI_read': 0, 'internal': 0, 'fivep_T_read': 0}
+    read_type_counts = {'TP_read': 0, 'internal': 0, 'FP_read': 0}
     seq_list = []
     qual_list = []
     ref_pos_set = set()
@@ -156,14 +156,14 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         read_type = read.get_tag('XX')
         read_type_counts[read_type] += 1
 
-        if orientation == '+' and read_type == 'threep_BCUMI_read' and read.is_read1 and read.is_reverse:
+        if orientation == '+' and read_type == 'TP_read' and read.is_read1 and read.is_reverse:
             threeprime_start.update({read.reference_end: 1})
-        if orientation == '-' and read_type == 'threep_BCUMI_read' and read.is_read1 and not read.is_reverse:
+        if orientation == '-' and read_type == 'TP_read' and read.is_read1 and not read.is_reverse:
             threeprime_start.update({read.reference_start: 1})
         
-        if orientation == '+' and read_type == 'fivep_T_read' and read.is_read1 and not read.is_reverse:
+        if orientation == '+' and read_type == 'FP_read' and read.is_read1 and not read.is_reverse:
             fiveprime_start.update({read.reference_start: 1})
-        if orientation == '-' and read_type == 'fivep_T_read' and read.is_read1 and read.is_reverse:
+        if orientation == '-' and read_type == 'FP_read' and read.is_read1 and read.is_reverse:
             fiveprime_start.update({read.reference_end: 1})
 
         if len(master_read) == 0:
@@ -247,9 +247,9 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['NR'] = nreads
     master_read['IR'] = np.sum(intronic_list)
     master_read['ER'] = np.sum(exonic_list)
-    master_read['TC'] = read_type_counts['threep_BCUMI_read']
+    master_read['TC'] = read_type_counts['TP_read']
     master_read['IC'] = read_type_counts['internal']
-    master_read['FC'] = read_type_counts['fivep_T_read']
+    master_read['FC'] = read_type_counts['FP_read']
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
