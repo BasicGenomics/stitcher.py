@@ -209,6 +209,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
             fiveprime_start.update({read.reference_start: 1})
         if orientation == '-' and read_type == 'FP_read' and read.is_read1 and read.is_reverse:
             F1 = True
+
             fiveprime_start.update({read.reference_end: 1})
 
 
