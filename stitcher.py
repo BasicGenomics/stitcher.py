@@ -16,7 +16,6 @@ from scipy.special import logsumexp
 from joblib import delayed,Parallel
 from multiprocessing import Process, Manager
 from collections import Counter
-import faulthandler
 __version__ = '3.0'
 nucleotides = ['A', 'T', 'C', 'G']
 nuc_dict = {'A':0, 'T':1, 'C':2, 'G':3, 'N': 4}
@@ -94,10 +93,39 @@ def using_indexed_assignment(x):
     result[temp] = np.arange(len(x))
     return result
 
+def filter_splice_junctions(skipped_interval_list):
+    l = [item for sublist in skipped_interval_list for item in sublist]
+    interval_counter = Counter(sorted(l, key = lambda x: (x[0], x[1])))
+    interval_keys = list(interval_counter.keys())
+    interval_values = list(interval_counter.values())
+    while True:
+        deleted_interval = False
+        for i in range(len(interval_keys)-1):
+            this_interval = interval_keys[i]
+            this_count = interval_values[i]
+            other_interval = interval_keys[i+1]
+            other_count = interval_values[i+1]
+            if is_overlapping(this_interval,other_interval):
+                deleted_interval = True
+                if this_count > other_count:
+                    del interval_keys[i+1]
+                    del interval_values[i+1]
+                else:
+                    del interval_keys[i]
+                    del interval_values[i]
+            if deleted_interval:
+                break
+        if deleted_interval:
+            continue
+        else:
+            break
+    return interval_keys, interval(list(interval_keys))
+
+def is_overlapping(this_interval, other_interval):
+    return this_interval[1] >= other_interval[0]
 
 
 def stitch_reads(read_d, cell, gene, umi, UMI_tag):
-    faulthandler.enable()
     master_read = {}
     nreads = len(read_d)
     exonic_list = [0]*nreads
@@ -108,10 +136,24 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     qual_list = []
     ref_pos_set = set()
     ref_pos_list = []
+    reference_pos_counter = Counter()
     threeprime_start = Counter()
     fiveprime_start = Counter()
-    reference_pos_counter = Counter()
+    master_read['skipped_interval_list'] = []
+    T1 = False
+    F1 = False
     for i,read in enumerate(read_d):
+        if read.has_tag('SM'):
+            sample_tag = read.get_tag('SM')
+        else:
+            sample_tag = 'NA'
+        if i == 0:
+            if read.has_tag('SC'):
+                master_read['SC'] = read.get_tag('SC')
+                master_read['CC'] = read.get_tag('CC')
+            else:
+                master_read['SC'] = 0
+                master_read['CC'] = 0
         if read.has_tag('GE'):
             exonic = True
         else:
@@ -157,14 +199,19 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
         read_type_counts[read_type] += 1
 
         if orientation == '+' and read_type == 'TP_read' and read.is_read1 and read.is_reverse:
+            T1 = True
             threeprime_start.update({read.reference_end: 1})
         if orientation == '-' and read_type == 'TP_read' and read.is_read1 and not read.is_reverse:
+            T1 = True
             threeprime_start.update({read.reference_start: 1})
-        
         if orientation == '+' and read_type == 'FP_read' and read.is_read1 and not read.is_reverse:
+            F1 = True
             fiveprime_start.update({read.reference_start: 1})
         if orientation == '-' and read_type == 'FP_read' and read.is_read1 and read.is_reverse:
+            F1 = True
+
             fiveprime_start.update({read.reference_end: 1})
+
 
         if len(master_read) == 0:
             master_read['skipped_interval_list'] = [skipped_intervals]
@@ -177,36 +224,34 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     ref_pos_set_array = np.array(list({p for p in ref_pos_set}))
 
+    if len(ref_pos_set_array) == 0:
+        return (False, ':'.join([gene,cell,umi]))
+
     master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['ref_pos_counter'] = reference_pos_counter
-    master_read['skipped_intervals'] = interval(list(set([item for sublist in master_read['skipped_interval_list'] for item in sublist])))
-
+    interval_keys, master_read['skipped_intervals'] = filter_splice_junctions(master_read['skipped_interval_list'])
+    junction_set = set([item for sublist in interval_keys for item in sublist])
 
     ref_and_skip_intersect = master_read['ref_intervals'] & master_read['skipped_intervals']
-    reference_positions = []
-    skipped_positions = []
 
     if not ref_and_skip_intersect.empty:
-        conflict_pos_list = P.iterate(ref_and_skip_intersect, step=1)
+        reference_positions = []
+        skipped_positions = []
+        conflict_pos_list = list(P.iterate(ref_and_skip_intersect, step=1))
         skip_pos_counter = Counter()
         for skip_tuples in master_read['skipped_interval_list']:
-            skip_interval = interval(skip_tuples) 
+            skip_interval = interval(skip_tuples)
             skip_pos_counter.update([p for p in conflict_pos_list if p in skip_interval])
         for pos in conflict_pos_list:
             if master_read['ref_pos_counter'][pos] > skip_pos_counter[pos]:
-                reference_positions.extend(pos)
+                reference_positions.append(pos)
             else:
-                skipped_positions.extend(pos)
-
-        reference_keep_intervals = interval(intervals_extract(reference_positions))
-        skip_keep_intervals = interval(intervals_extract(skipped_positions))
-        ### No refskip where there is reference sequence
-        master_read['skipped_intervals'] = master_read['skipped_intervals'] - reference_keep_intervals
-        ### No ref coverage where there is refskip
-        master_read['ref_intervals'] = master_read['ref_intervals'] - skip_keep_intervals
-
+                skipped_positions.append(pos)
+        master_read['skipped_intervals'] = master_read['skipped_intervals'] - interval(intervals_extract(reference_positions))
+        master_read['skipped_intervals'] = P.from_data([(True, i[1], i[2], True) for i in P.to_data(master_read['skipped_intervals']) if i[1] in junction_set and i[2] in junction_set])
+        master_read['ref_intervals'] = master_read['ref_intervals'] - interval(intervals_extract(skipped_positions))
+    
     master_read['skipped_intervals'] = master_read['skipped_intervals'] & P.closed(master_read['ref_intervals'].lower, master_read['ref_intervals'].upper)
-
     ref_pos_set_array = np.array(list({p for p in P.iterate(master_read['ref_intervals'], step=1)}))
 
     if len(ref_pos_set_array) == 0:
@@ -216,7 +261,7 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
 
     for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
         for b1, Q, pos in zip(seq,Q_list, ref_positions):
-            if pos not in master_read['ref_intervals']:
+            if pos not in ref_to_pos_dict:
                 continue
             for b2 in nucleotides:
                 sparse_row_dict[b2].append(i)
@@ -253,6 +298,15 @@ def stitch_reads(read_d, cell, gene, umi, UMI_tag):
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
+    master_read['SM'] = sample_tag
+    if T1:
+        master_read['T1'] = 'Y'
+    else:
+        master_read['T1'] = 'N'
+    if F1:
+        master_read['F1'] = 'Y'
+    else:
+        master_read['F1'] = 'N'
     sam = convert_to_sam(master_read, UMI_tag)
     if sam is None:
         return (False, ':'.join([gene,cell,umi]))
@@ -279,6 +333,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, cell_tag, UMI_tag, only_mol
         else:
             if only_molecules:
                 if umi[0] == '_':
+                    continue
+                if cell[-1] == '_':
                     continue
                 if len(umi) >= 5:
                     if umi[:5] == 'Unass':
@@ -391,8 +447,13 @@ def convert_to_sam(stitched_m, UMI_tag):
     sam_dict['TC'] = 'TC:i:{}'.format(stitched_m['TC'])
     sam_dict['IC'] = 'IC:i:{}'.format(stitched_m['IC'])
     sam_dict['FC'] = 'FC:i:{}'.format(stitched_m['FC'])
+    sam_dict['SC'] = 'SC:i:{}'.format(stitched_m['SC'])
+    sam_dict['CC'] = 'CC:i:{}'.format(stitched_m['CC'])
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
+    sam_dict['T1'] = 'T1:Z:{}'.format(stitched_m['T1'])
+    sam_dict['F1'] = 'F1:Z:{}'.format(stitched_m['F1'])
+    sam_dict['SM'] = 'SM:Z:{}'.format(stitched_m['SM'])
     sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
     return '\t'.join(list(sam_dict.values()))
 
